@@ -52,8 +52,16 @@ encode(#avro_enum{symbols=Symbols},
        Symbol) when is_atom(Symbol) ->
     case search_elem(Symbol, Symbols) of
         N when is_integer(N) -> encode(int, N)
-    end.
+    end;
 
+% Unions
+encode(#avro_union{types=Types},
+       {Type, Val}) ->
+    case search_elem(Type, Types) of
+        N when is_integer(N) ->
+            [encode(long, N),
+             encode(Type, Val)]
+    end.
 
 %%%%%%%% DECODING
 
@@ -95,7 +103,14 @@ decode(#avro_record{fields=Fields}, Bin) ->
 % Enums
 decode(#avro_enum{symbols=Symbols}, Bin) ->
     {SymIndex, Rest} = decode(int, Bin),
-    {lists:nth(SymIndex + 1, Symbols), Rest}.
+    {lists:nth(SymIndex + 1, Symbols), Rest};
+
+% Union
+decode(#avro_union{types=Types}, Bin) ->
+    {TypeIndex, Rest} = decode(long, Bin),
+    Type = lists:nth(TypeIndex + 1, Types),
+    {DecodedVal, Rest2} = decode(Type, Rest),
+    {{Type, DecodedVal}, Rest2}.
 
 %%%%% INTEGER ENCODING/DECODING %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 
@@ -183,7 +198,9 @@ test() ->
     ok = test_record_encoding(),
     ok = test_record_decoding(),
     ok = test_enum_encoding(),
-    ok = test_enum_decoding().
+    ok = test_enum_decoding(),
+    ok = test_union_encoding(),
+    ok = test_union_decoding().
 
 % Test int encoding from examples in avro spec
 test_int_encoding() ->
@@ -261,4 +278,15 @@ test_enum_decoding() ->
     {bar, <<>>} = decode(#avro_enum{symbols=[foo, bar, baz]}, <<2>>),
     {foo, <<>>} = decode(#avro_enum{symbols=[foo, bar, baz]}, <<0>>),
     % TODO what should we do with unknown enum?
+    ok.
+
+test_union_encoding() ->
+    Schema = #avro_union{types = [string, null]}, % TODO should this be tuple?
+    <<0, 6, "foo">> = iolist_to_binary(encode(Schema, {string, <<"foo">>})),
+    <<2>> = iolist_to_binary(encode(Schema, {null, null})), % TODO this kinda weird
+    ok.
+
+test_union_decoding() ->
+    Schema = #avro_union{types = [string, null]}, % TODO should this be tuple?
+    {{string, <<"foo">>}, <<>>} = decode(Schema, <<0, 6, "foo">>),
     ok.
