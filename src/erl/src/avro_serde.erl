@@ -22,7 +22,9 @@ encode(bytes, Data) when is_binary(Data) ->
 encode(float, Float) when is_float(Float) ->
     <<Float:32/little-float>>;
 encode(double, Double) when is_float(Double) ->
-    <<Double:64/little-float>>.
+    <<Double:64/little-float>>;
+encode(boolean, true) -> <<1>>;
+encode(boolean, false) -> <<0>>.
 
 decode(int, Bin) ->
     {Zig, Rest} = varint_decode(Bin), % TODO not diff between int and long
@@ -41,8 +43,9 @@ decode(bytes, Bin) ->
 decode(float, <<Float:32/little-float, Rest/binary>>) ->
     {Float, Rest};
 decode(double, <<Double:64/little-float, Rest/binary>>) ->
-    {Double, Rest}.
-
+    {Double, Rest};
+decode(boolean, <<1, Rest/binary>>) -> {true, Rest};
+decode(boolean, <<0, Rest/binary>>) -> {false, Rest}.
 
 %%%%% INTEGER ENCODING/DECODING %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 varint_encode(<<0:64>>) -> <<0>>;
@@ -111,7 +114,8 @@ test() ->
     ok = test_int_decoding(),
     ok = test_string_encoding(),
     ok = test_string_decoding(),
-    ok = test_float_double_serde().
+    ok = test_float_double_serde(),
+    ok = test_bool_serde().
 
 % Test int encoding from examples in avro spec
 test_int_encoding() ->
@@ -146,4 +150,11 @@ test_float_double_serde() ->
 
     EncDouble = encode(double, 234.0),
     {234.0, <<>>} = decode(double, EncDouble),
+    ok.
+
+test_bool_serde() ->
+    <<1>> = encode(boolean, true),
+    <<0>> = encode(boolean, false),
+    {true, <<>>} = decode(boolean, <<1>>),
+    {false, <<>>} = decode(boolean, <<0>>),
     ok.
