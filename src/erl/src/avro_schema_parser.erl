@@ -6,8 +6,12 @@
 -module(avro_schema_parser).
 -include("avro_schema.hrl").
 
--compile(export_all).
+-export([parse_schema_file/1, parse_schema/1, test/0]).
 
+
+parse_schema_file(SchemaPath) ->
+    {{ok, Schema}, SchemaPath} = {file:read_file(SchemaPath), SchemaPath},
+    parse_schema(Schema).
 
 parse_schema(SchemaBin) when is_binary(SchemaBin) ->
     ParsedJson = mochijson2:decode(SchemaBin),
