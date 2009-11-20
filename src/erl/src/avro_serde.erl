@@ -11,7 +11,7 @@
 
 -include("avro_schema.hrl").
 
-%% ENCODING
+%%%%%%%%% ENCODING
 
 % Primitive Types
 encode(int, Int) ->
@@ -44,9 +44,11 @@ encode(#avro_record{fields=Fields},
             % Probably a record
             [_RecordName | RealData] = tuple_to_list(Data),
             [encode(Type, FieldData) ||
-                {{FieldName, Type}, FieldData} <- lists:zip(Fields, RealData)]
+                {{_FieldName, Type}, FieldData} <- lists:zip(Fields, RealData)]
     end.
 
+
+%%%%%%%% DECODING
 
 decode(int, Bin) ->
     {Zig, Rest} = varint_decode(Bin), % TODO not diff between int and long
@@ -68,7 +70,20 @@ decode(double, <<Double:64/little-float, Rest/binary>>) ->
     {Double, Rest};
 decode(boolean, <<1, Rest/binary>>) -> {true, Rest};
 decode(boolean, <<0, Rest/binary>>) -> {false, Rest};
-decode(null, Bin) when is_binary(Bin) -> Bin.
+decode(null, Bin) when is_binary(Bin) -> {null, Bin}; % TODO null or undefined?
+
+% Records
+decode(#avro_record{fields=Fields}, Bin) ->
+    % TODO this decodes records as tuples... is this what we want?
+    % or do we want proplists? or dicts?
+    {RevDataList, Rest} =
+        lists:foldl(fun({_FieldName, Type}, {AccData, BinIn}) ->
+                            {Data, Rest} = decode(Type, BinIn),
+                            {[Data | AccData], Rest}
+                    end,
+                    {[], Bin},
+                    Fields),
+    {list_to_tuple(lists:reverse(RevDataList)), Rest}.
 
 %%%%% INTEGER ENCODING/DECODING %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 
@@ -144,7 +159,8 @@ test() ->
     ok = test_string_decoding(),
     ok = test_float_double_serde(),
     ok = test_bool_serde(),
-    ok = test_record_encoding().
+    ok = test_record_encoding(),
+    ok = test_record_decoding().
 
 % Test int encoding from examples in avro spec
 test_int_encoding() ->
@@ -196,8 +212,18 @@ test_record_encoding() ->
               {<<"b">>, string}]},
     % An instance of this record whose a field has value 27 (encoded
     % as hex 36) and whose b field has value "foo" (encoded as hex bytes
-    % OC 66 6f 6f), would be encoded simply as the concatenation of these,
-    % namely the hex byte sequence: 36 0C 66 6f 6f
-    <<16#36, 16#0c, 16#66, 16#6f, 16#6f>> =
+    % O6 66 6f 6f), would be encoded simply as the concatenation of these,
+    % namely the hex byte sequence: 36 06 66 6f 6f
+    <<16#36, 16#06, 16#66, 16#6f, 16#6f>> =
         iolist_to_binary(encode(Schema, {test, 27, <<"foo">>})),
+    ok.
+
+
+test_record_decoding() ->
+    % Same example from avro spec as above
+    Schema = #avro_record{
+      name= <<"test">>,
+      fields=[{<<"a">>, long},
+              {<<"b">>, string}]},
+    {{27, <<"foo">>}, <<>>} = decode(Schema, <<16#36, 16#06, 16#66, 16#6f, 16#6f>>),
     ok.
