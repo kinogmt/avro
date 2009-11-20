@@ -9,6 +9,11 @@
 
 -compile(export_all).
 
+-include("avro_schema.hrl").
+
+%% ENCODING
+
+% Primitive Types
 encode(int, Int) ->
     Zig = zigzag_encode(int, Int),
     varint_encode(<<Zig:32>>);
@@ -26,7 +31,22 @@ encode(double, Double) when is_float(Double) ->
 encode(boolean, true) -> <<1>>;
 encode(boolean, false) -> <<0>>;
 encode(null, undefined) -> <<>>;
-encode(null, null) -> <<>>.
+encode(null, null) -> <<>>;
+
+% Records
+encode(#avro_record{fields=Fields},
+       Data) when is_tuple(Data) orelse is_list(Data) ->
+    NFields = length(Fields),
+    if is_tuple(Data), size(Data) == NFields ->
+            [encode(Type, FieldData) ||
+                {Type, FieldData} <- lists:zip(Fields, tuple_to_list(Data))];
+       is_tuple(Data), size(Data) == NFields + 1, is_atom(element(1, Data)) ->
+            % Probably a record
+            [_RecordName | RealData] = tuple_to_list(Data),
+            [encode(Type, FieldData) ||
+                {{FieldName, Type}, FieldData} <- lists:zip(Fields, RealData)]
+    end.
+
 
 decode(int, Bin) ->
     {Zig, Rest} = varint_decode(Bin), % TODO not diff between int and long
@@ -51,6 +71,8 @@ decode(boolean, <<0, Rest/binary>>) -> {false, Rest};
 decode(null, Bin) when is_binary(Bin) -> Bin.
 
 %%%%% INTEGER ENCODING/DECODING %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+
+% 64 bit encode
 varint_encode(<<0:64>>) -> <<0>>;
 varint_encode(<<0:57, B1:7>>) -> <<B1>>;
 varint_encode(<<0:50, B1:7, B2:7>>) ->
@@ -73,7 +95,7 @@ varint_encode(<<B1:1, B2:7, B3:7, B4:7, B5:7, B6:7, B7:7, B8:7, B9:7, B10:7>>) -
     <<1:1, B10:7, 1:1, B9:7, 1:1, B8:7, 1:1, B7:7, 1:1, B6:7, 1:1, B5:7, 1:1, B4:7, 1:1, B3:7, 1:1, B2:7, B1>>;
 
 
-
+% 32 bit encode
 varint_encode(<<0:32>>) -> <<0>>;
 varint_encode(<<0:25, B1:7>>) -> <<B1>>;
 varint_encode(<<0:18, B1:7, B2:7>>) ->
@@ -85,6 +107,7 @@ varint_encode(<<0:4, B1:7, B2:7, B3:7, B4:7>>) ->
 varint_encode(<<B1:4, B2:7, B3:7, B4:7, B5:7>>) ->
     <<1:1, B5:7, 1:1, B4:7, 1:1, B3:7, 1:1, B2:7, B1>>.
 
+% decode
 varint_decode(Bin) ->
     varint_decode(Bin, []).
 varint_decode(<<1:1, Bits:7, Rest/binary>>, Acc) ->
@@ -99,7 +122,7 @@ varint_decode(<<0:1, NewBits:7, Rest/binary>>, Acc) ->
                 NewAcc),
     {Decoded, Rest}.
 
-
+% Zigzag encode/decode
 zigzag_encode(int, Int) ->
     (Int bsl 1) bxor (Int bsr 31);
 zigzag_encode(long, Int) ->
@@ -112,13 +135,16 @@ zigzag_decode(long, ZigInt) ->
 
 
 
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%% TESTING %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+
 test() ->
     ok = test_int_encoding(),
     ok = test_int_decoding(),
     ok = test_string_encoding(),
     ok = test_string_decoding(),
     ok = test_float_double_serde(),
-    ok = test_bool_serde().
+    ok = test_bool_serde(),
+    ok = test_record_encoding().
 
 % Test int encoding from examples in avro spec
 test_int_encoding() ->
@@ -160,4 +186,18 @@ test_bool_serde() ->
     <<0>> = encode(boolean, false),
     {true, <<>>} = decode(boolean, <<1>>),
     {false, <<>>} = decode(boolean, <<0>>),
+    ok.
+
+test_record_encoding() ->
+    % Example from avro spec
+    Schema = #avro_record{
+      name= <<"test">>,
+      fields=[{<<"a">>, long},
+              {<<"b">>, string}]},
+    % An instance of this record whose a field has value 27 (encoded
+    % as hex 36) and whose b field has value "foo" (encoded as hex bytes
+    % OC 66 6f 6f), would be encoded simply as the concatenation of these,
+    % namely the hex byte sequence: 36 0C 66 6f 6f
+    <<16#36, 16#0c, 16#66, 16#6f, 16#6f>> =
+        iolist_to_binary(encode(Schema, {test, 27, <<"foo">>})),
     ok.
