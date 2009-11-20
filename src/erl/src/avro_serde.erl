@@ -14,7 +14,11 @@ encode(int, Int) ->
     varint_encode(<<Zig:32>>);
 encode(long, Long) ->
     Zig = zigzag_encode(long, Long),
-    varint_encode(<<Zig:64>>).
+    varint_encode(<<Zig:64>>);
+encode(string, Data) when is_binary(Data) -> % TODO new erl unicode stuff?
+    [encode(long, iolist_size(Data)), Data];
+encode(bytes, Data) when is_binary(Data) ->
+    [encode(long, iolist_size(Data)), Data].
 
 
 decode(int, Bin) ->
@@ -22,7 +26,16 @@ decode(int, Bin) ->
     {zigzag_decode(int, Zig), Rest};
 decode(long, Bin) ->
     {Zig, Rest} = varint_decode(Bin),  % TODO not diff between int and long
-    {zigzag_decode(long, Zig), Rest}.
+    {zigzag_decode(long, Zig), Rest};
+decode(string, Bin) ->  % TODO new erl unicode stuff?
+    {Length, Rest} = decode(long, Bin),
+    <<Data:Length/binary, Rest2/binary>> = Rest,
+    {Data, Rest2};
+decode(bytes, Bin) ->
+    {Length, Rest} = decode(long, Bin),
+    <<Data:Length/binary, Rest2/binary>> = Rest,
+    {Data, Rest2}.
+
 
 %%%%% INTEGER ENCODING/DECODING %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 varint_encode(<<0:64>>) -> <<0>>;
@@ -88,7 +101,9 @@ zigzag_decode(long, ZigInt) ->
 
 test() ->
     ok = test_int_encoding(),
-    ok = test_int_decoding().
+    ok = test_int_decoding(),
+    ok = test_string_encoding(),
+    ok = test_string_decoding().
 
 % Test int encoding from examples in avro spec
 test_int_encoding() ->
@@ -98,10 +113,20 @@ test_int_encoding() ->
     <<128,1>> = encode(int, 64),
     ok.
 
-
 test_int_decoding() ->
     {0, <<>>} = decode(int, <<0>>),
     {-2, <<>>} = decode(int, <<3>>),
     {-64, <<>>} = decode(int, <<16#7f>>),
     {64, <<>>} = decode(int, <<128, 1>>),
+    ok.
+
+
+test_string_encoding() ->
+    <<10, "hello">> = iolist_to_binary(encode(string, <<"hello">>)),
+    <<10, "hello">> = iolist_to_binary(encode(bytes, <<"hello">>)),
+    ok.
+
+test_string_decoding() ->
+    {<<"hello">>, <<>>} = decode(string, <<10, "hello">>),
+    {<<"hello">>, <<>>} = decode(bytes, <<10, "hello">>),
     ok.
