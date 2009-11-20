@@ -4,7 +4,7 @@
 %%% Created : 19 Nov 2009 by Todd Lipcon <todd@lipcon.org>
 
 -module(avro_schema_parser).
-
+-include("avro_schema.hrl").
 
 -compile(export_all).
 
@@ -43,7 +43,10 @@ parse_special(<<"fixed">>, JsonFields) -> parse_fixed(JsonFields).
 parse_record(JsonFields) ->
     [Name] = proplists:get_all_values(<<"name">>, JsonFields),
     [RecFields] = proplists:get_all_values(<<"fields">>, JsonFields),
-    {record, Name, [parse_record_field(Field) || Field <- RecFields]}.
+    Namespace = proplists:get_value(<<"namespace">>, JsonFields),
+    #avro_record{name=Name,
+                 namespace=Namespace,
+                 fields=[parse_record_field(Field) || Field <- RecFields]}.
 
 parse_record_field({struct, JFields}) ->
     [FieldName] = proplists:get_all_values(<<"name">>, JFields),
