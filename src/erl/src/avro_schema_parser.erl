@@ -61,7 +61,8 @@ parse_record_field({struct, JFields}) ->
 parse_enum(JsonFields) ->
     [Name] = proplists:get_all_values(<<"name">>, JsonFields),
     [Symbols] = proplists:get_all_values(<<"symbols">>, JsonFields),
-    {enum, Name, [list_to_atom(binary_to_list(Sym)) || Sym <- Symbols]}.
+    #avro_enum{name=Name,
+               symbols=[list_to_atom(binary_to_list(Sym)) || Sym <- Symbols]}.
 
 parse_array(JsonFields) ->
     [ItemType] = proplists:get_all_values(<<"items">>, JsonFields),

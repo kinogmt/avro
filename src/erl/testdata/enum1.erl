@@ -1,1 +1,1 @@
-{enum, <<"Suit">>, ['SPADES', 'HEARTS', 'DIAMONDS', 'CLUBS']}.
+{avro_enum, <<"Suit">>, ['SPADES', 'HEARTS', 'DIAMONDS', 'CLUBS']}.

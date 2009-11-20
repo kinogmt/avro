@@ -4,4 +4,7 @@
 -record(avro_record,
         {name, namespace, fields}).
 
+-record(avro_enum,
+        {name, symbols}).
+
 -endif.

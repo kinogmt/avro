@@ -45,6 +45,13 @@ encode(#avro_record{fields=Fields},
             [_RecordName | RealData] = tuple_to_list(Data),
             [encode(Type, FieldData) ||
                 {{_FieldName, Type}, FieldData} <- lists:zip(Fields, RealData)]
+    end;
+
+% Enums
+encode(#avro_enum{symbols=Symbols},
+       Symbol) when is_atom(Symbol) ->
+    case search_elem(Symbol, Symbols) of
+        N when is_integer(N) -> encode(int, N)
     end.
 
 
@@ -83,7 +90,12 @@ decode(#avro_record{fields=Fields}, Bin) ->
                     end,
                     {[], Bin},
                     Fields),
-    {list_to_tuple(lists:reverse(RevDataList)), Rest}.
+    {list_to_tuple(lists:reverse(RevDataList)), Rest};
+
+% Enums
+decode(#avro_enum{symbols=Symbols}, Bin) ->
+    {SymIndex, Rest} = decode(int, Bin),
+    {lists:nth(SymIndex + 1, Symbols), Rest}.
 
 %%%%% INTEGER ENCODING/DECODING %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 
@@ -149,6 +161,15 @@ zigzag_decode(long, ZigInt) ->
     (ZigInt bsr 1) bxor -(ZigInt band 1).
 
 
+% Utility function - return the index of an element in a list
+search_elem(Elem, List) ->
+    search_elem(Elem, List, 0).
+search_elem(_Elem, [], _Index) -> not_found;
+search_elem(Elem, [Elem | _T], Index) ->
+    Index;
+search_elem(Elem, [_H | T], Index) ->
+    search_elem(Elem, T, Index + 1).
+
 
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%% TESTING %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 
@@ -160,7 +181,9 @@ test() ->
     ok = test_float_double_serde(),
     ok = test_bool_serde(),
     ok = test_record_encoding(),
-    ok = test_record_decoding().
+    ok = test_record_decoding(),
+    ok = test_enum_encoding(),
+    ok = test_enum_decoding().
 
 % Test int encoding from examples in avro spec
 test_int_encoding() ->
@@ -226,4 +249,16 @@ test_record_decoding() ->
       fields=[{<<"a">>, long},
               {<<"b">>, string}]},
     {{27, <<"foo">>}, <<>>} = decode(Schema, <<16#36, 16#06, 16#66, 16#6f, 16#6f>>),
+    ok.
+
+
+test_enum_encoding() ->
+    <<2>> = encode(#avro_enum{symbols=[foo, bar, baz]}, bar),
+    <<0>> = encode(#avro_enum{symbols=[foo, bar, baz]}, foo),
+    ok.
+
+test_enum_decoding() ->
+    {bar, <<>>} = decode(#avro_enum{symbols=[foo, bar, baz]}, <<2>>),
+    {foo, <<>>} = decode(#avro_enum{symbols=[foo, bar, baz]}, <<0>>),
+    % TODO what should we do with unknown enum?
     ok.
