@@ -30,7 +30,7 @@ walk_json_tree(<<"boolean">>) -> boolean;
 walk_json_tree(<<"null">>) -> null;
 % union
 walk_json_tree(Types) when is_list(Types) ->
-    {union, [walk_json_tree(Type) || Type <- Types]};
+    #avro_union{types=[walk_json_tree(Type) || Type <- Types]};
 % record/array
 walk_json_tree({struct, JsonFields}) when is_list(JsonFields) ->
     Type = proplists:get_value(<<"type">>, JsonFields),

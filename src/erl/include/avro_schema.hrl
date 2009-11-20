@@ -7,4 +7,6 @@
 -record(avro_enum,
         {name, symbols}).
 
+-record(avro_union,
+        {types}).
 -endif.

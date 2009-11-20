@@ -9,7 +9,7 @@
   {<<"nullField">>,null},
   {<<"arrayField">>,{array,double}},
   {<<"mapField">>,{map,{avro_record,<<"Foo">>,undefined,[{<<"label">>,string}]}}},
-  {<<"unionField">>,{union,[boolean,double,{array,bytes}]}},
+  {<<"unionField">>,{avro_union,[boolean,double,{array,bytes}]}},
   {<<"enumField">>,{avro_enum,<<"Kind">>,['A','B','C']}},
   {<<"fixedField">>,{fixed,<<"MD5">>,16}},
   {<<"recordField">>,

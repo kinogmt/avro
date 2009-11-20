@@ -1,3 +1,3 @@
 {avro_record, <<"LongList">>, undefined,
  [{<<"value">>, long},
-  {<<"next">>, {union, [{type_reference, <<"LongList">>}, null]}}]}.
+  {<<"next">>, {avro_union, [{type_reference, <<"LongList">>}, null]}}]}.
