@@ -372,3 +372,6 @@ test_map_decoding() ->
     {[{<<"foo">>, 1},
       {<<"bar">>, 2}], <<>>} = decode({map, int}, <<4, 6, "foo", 2, 6, "bar", 4, 0>>),
     ok.
+
+
+% TODO(todd) implement fixed
