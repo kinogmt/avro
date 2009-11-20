@@ -67,6 +67,13 @@ encode(#avro_union{types=Types},
 encode({array, Type}, List) when is_list(List) ->
     [encode(long, length(List)),
      [encode(Type, Elem) || Elem <- List],
+     0];
+
+% Map
+encode({map, Type}, PairList) when is_list(PairList) ->
+    [encode(long, length(PairList)),
+     [[encode(string, Key),
+       encode(Type, Val)] || {Key, Val} <- PairList],
      0].
 
 %%%%%%%% DECODING
@@ -120,22 +127,11 @@ decode(#avro_union{types=Types}, Bin) ->
 
 % Array
 decode({array, Type}, Bin) ->
-    decode_array_loop(Type, Bin, []).
+    decode_array_loop(Type, Bin, []);
 
-decode_array_loop(Type, Bin, AccIn) ->
-    {Len, Rest} = decode(long, Bin),
-    case Len of
-        0 ->
-            {lists:reverse(AccIn), Rest};
-        N when N > 0 ->
-            decode_array_blockloop(Type, Rest, Len, AccIn)
-    end.
-
-decode_array_blockloop(Type, Bin, 0, AccIn) ->
-    decode_array_loop(Type, Bin, AccIn);
-decode_array_blockloop(Type, Bin, N, AccIn) ->
-    {Val, Rest} = decode(Type, Bin),
-    decode_array_blockloop(Type, Rest, N - 1, [Val | AccIn]).
+% Map
+decode({map, Type}, Bin) ->
+    decode_map_loop(Type, Bin, []).
 
 %%%%% INTEGER ENCODING/DECODING %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 
@@ -210,6 +206,40 @@ search_elem(Elem, [Elem | _T], Index) ->
 search_elem(Elem, [_H | T], Index) ->
     search_elem(Elem, T, Index + 1).
 
+% Internal functions for array
+decode_array_loop(Type, Bin, AccIn) ->
+    {Len, Rest} = decode(long, Bin),
+    case Len of
+        0 ->
+            {lists:reverse(AccIn), Rest};
+        N when N > 0 ->
+            decode_array_blockloop(Type, Rest, Len, AccIn)
+    end.
+
+decode_array_blockloop(Type, Bin, 0, AccIn) ->
+    decode_array_loop(Type, Bin, AccIn);
+decode_array_blockloop(Type, Bin, N, AccIn) ->
+    {Val, Rest} = decode(Type, Bin),
+    decode_array_blockloop(Type, Rest, N - 1, [Val | AccIn]).
+
+
+% Internal functions for map
+decode_map_loop(Type, Bin, AccIn) ->
+    {Len, Rest} = decode(long, Bin),
+    case Len of
+        0 ->
+            {lists:reverse(AccIn), Rest};
+        N when N > 0 ->
+            decode_map_blockloop(Type, Rest, Len, AccIn)
+    end.
+
+decode_map_blockloop(Type, Bin, 0, AccIn) ->
+    decode_map_loop(Type, Bin, AccIn);
+decode_map_blockloop(Type, Bin, N, AccIn) ->
+    {Key, Rest1} = decode(string, Bin),
+    {Val, Rest2} = decode(Type, Rest1),
+    decode_map_blockloop(Type, Rest2, N - 1, [{Key, Val} | AccIn]).
+
 
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%% TESTING %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 
@@ -227,7 +257,9 @@ test() ->
     ok = test_union_encoding(),
     ok = test_union_decoding(),
     ok = test_array_encoding(),
-    ok = test_array_decoding().
+    ok = test_array_decoding(),
+    ok = test_map_encoding(),
+    ok = test_map_decoding().
 
 % Test int encoding from examples in avro spec
 test_int_encoding() ->
@@ -327,4 +359,16 @@ test_array_decoding() ->
     {[1,2,3,4], <<>>} = decode({array, long}, <<8,2,4,6,8,0>>),
     % Two blocks of 2
     {[1,2,3,4], <<>>} = decode({array, long}, <<4,2,4,4,6,8,0>>),
+    ok.
+
+test_map_encoding() ->
+    <<4, 6, "foo", 2,
+         6, "bar", 4,
+      0>> = iolist_to_binary(encode({map, int}, [{<<"foo">>, 1},
+                                                 {<<"bar">>, 2}])),
+    ok.
+
+test_map_decoding() ->
+    {[{<<"foo">>, 1},
+      {<<"bar">>, 2}], <<>>} = decode({map, int}, <<4, 6, "foo", 2, 6, "bar", 4, 0>>),
     ok.
