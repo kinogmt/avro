@@ -61,7 +61,13 @@ encode(#avro_union{types=Types},
         N when is_integer(N) ->
             [encode(long, N),
              encode(Type, Val)]
-    end.
+    end;
+
+% Array
+encode({array, Type}, List) when is_list(List) ->
+    [encode(long, length(List)),
+     [encode(Type, Elem) || Elem <- List],
+     0].
 
 %%%%%%%% DECODING
 
@@ -110,7 +116,26 @@ decode(#avro_union{types=Types}, Bin) ->
     {TypeIndex, Rest} = decode(long, Bin),
     Type = lists:nth(TypeIndex + 1, Types),
     {DecodedVal, Rest2} = decode(Type, Rest),
-    {{Type, DecodedVal}, Rest2}.
+    {{Type, DecodedVal}, Rest2};
+
+% Array
+decode({array, Type}, Bin) ->
+    decode_array_loop(Type, Bin, []).
+
+decode_array_loop(Type, Bin, AccIn) ->
+    {Len, Rest} = decode(long, Bin),
+    case Len of
+        0 ->
+            {lists:reverse(AccIn), Rest};
+        N when N > 0 ->
+            decode_array_blockloop(Type, Rest, Len, AccIn)
+    end.
+
+decode_array_blockloop(Type, Bin, 0, AccIn) ->
+    decode_array_loop(Type, Bin, AccIn);
+decode_array_blockloop(Type, Bin, N, AccIn) ->
+    {Val, Rest} = decode(Type, Bin),
+    decode_array_blockloop(Type, Rest, N - 1, [Val | AccIn]).
 
 %%%%% INTEGER ENCODING/DECODING %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 
@@ -200,7 +225,9 @@ test() ->
     ok = test_enum_encoding(),
     ok = test_enum_decoding(),
     ok = test_union_encoding(),
-    ok = test_union_decoding().
+    ok = test_union_decoding(),
+    ok = test_array_encoding(),
+    ok = test_array_decoding().
 
 % Test int encoding from examples in avro spec
 test_int_encoding() ->
@@ -289,4 +316,15 @@ test_union_encoding() ->
 test_union_decoding() ->
     Schema = #avro_union{types = [string, null]}, % TODO should this be tuple?
     {{string, <<"foo">>}, <<>>} = decode(Schema, <<0, 6, "foo">>),
+    ok.
+
+test_array_encoding() ->
+    <<8,2,4,6,8,0>> = iolist_to_binary(encode({array, long}, [1,2,3,4])),
+    ok.
+
+test_array_decoding() ->
+    % One block of 4
+    {[1,2,3,4], <<>>} = decode({array, long}, <<8,2,4,6,8,0>>),
+    % Two blocks of 2
+    {[1,2,3,4], <<>>} = decode({array, long}, <<4,2,4,4,6,8,0>>),
     ok.
