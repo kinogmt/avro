@@ -18,8 +18,11 @@ encode(long, Long) ->
 encode(string, Data) when is_binary(Data) -> % TODO new erl unicode stuff?
     [encode(long, iolist_size(Data)), Data];
 encode(bytes, Data) when is_binary(Data) ->
-    [encode(long, iolist_size(Data)), Data].
-
+    [encode(long, iolist_size(Data)), Data];
+encode(float, Float) when is_float(Float) ->
+    <<Float:32/little-float>>;
+encode(double, Double) when is_float(Double) ->
+    <<Double:64/little-float>>.
 
 decode(int, Bin) ->
     {Zig, Rest} = varint_decode(Bin), % TODO not diff between int and long
@@ -34,7 +37,11 @@ decode(string, Bin) ->  % TODO new erl unicode stuff?
 decode(bytes, Bin) ->
     {Length, Rest} = decode(long, Bin),
     <<Data:Length/binary, Rest2/binary>> = Rest,
-    {Data, Rest2}.
+    {Data, Rest2};
+decode(float, <<Float:32/little-float, Rest/binary>>) ->
+    {Float, Rest};
+decode(double, <<Double:64/little-float, Rest/binary>>) ->
+    {Double, Rest}.
 
 
 %%%%% INTEGER ENCODING/DECODING %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
@@ -103,7 +110,8 @@ test() ->
     ok = test_int_encoding(),
     ok = test_int_decoding(),
     ok = test_string_encoding(),
-    ok = test_string_decoding().
+    ok = test_string_decoding(),
+    ok = test_float_double_serde().
 
 % Test int encoding from examples in avro spec
 test_int_encoding() ->
@@ -129,4 +137,13 @@ test_string_encoding() ->
 test_string_decoding() ->
     {<<"hello">>, <<>>} = decode(string, <<10, "hello">>),
     {<<"hello">>, <<>>} = decode(bytes, <<10, "hello">>),
+    ok.
+
+
+test_float_double_serde() ->
+    EncFloat = encode(float, 234.0),
+    {234.0, <<>>} = decode(float, EncFloat),
+
+    EncDouble = encode(double, 234.0),
+    {234.0, <<>>} = decode(double, EncDouble),
     ok.
