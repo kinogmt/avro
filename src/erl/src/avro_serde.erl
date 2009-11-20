@@ -24,7 +24,9 @@ encode(float, Float) when is_float(Float) ->
 encode(double, Double) when is_float(Double) ->
     <<Double:64/little-float>>;
 encode(boolean, true) -> <<1>>;
-encode(boolean, false) -> <<0>>.
+encode(boolean, false) -> <<0>>;
+encode(null, undefined) -> <<>>;
+encode(null, null) -> <<>>.
 
 decode(int, Bin) ->
     {Zig, Rest} = varint_decode(Bin), % TODO not diff between int and long
@@ -45,7 +47,8 @@ decode(float, <<Float:32/little-float, Rest/binary>>) ->
 decode(double, <<Double:64/little-float, Rest/binary>>) ->
     {Double, Rest};
 decode(boolean, <<1, Rest/binary>>) -> {true, Rest};
-decode(boolean, <<0, Rest/binary>>) -> {false, Rest}.
+decode(boolean, <<0, Rest/binary>>) -> {false, Rest};
+decode(null, Bin) when is_binary(Bin) -> Bin.
 
 %%%%% INTEGER ENCODING/DECODING %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 varint_encode(<<0:64>>) -> <<0>>;
