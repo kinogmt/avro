@@ -28,7 +28,7 @@
 
 options {
   JAVA_UNICODE_ESCAPE = true;
-  ERROR_REPORTING = false;
+  ERROR_REPORTING = true;
   STATIC = false;
   JDK_VERSION = "1.5";
 }
@@ -141,7 +141,6 @@ TOKEN :
 | < CASE: "case" >
 | < CATCH: "catch" >
 | < CHAR: "char" >
-| < CLASS: "class" >
 | < CONST: "const" >
 | < CONTINUE: "continue" >
 | < _DEFAULT: "default" >
@@ -150,9 +149,9 @@ TOKEN :
 | < ELSE: "else" >
 | < ENUM: "enum" >
 | < EXTENDS: "extends" >
+| < ERROR: "error" >
 | < FALSE: "false" >
-| < FINAL: "final" >
-| < FINALLY: "finally" >
+| < FIXED: "fixed" >
 | < FLOAT: "float" >
 | < FOR: "for" >
 | < GOTO: "goto" >
@@ -169,7 +168,9 @@ TOKEN :
 | < PACKAGE: "package">
 | < PRIVATE: "private" >
 | < PROTECTED: "protected" >
+| < PROTOCOL: "protocol" >
 | < PUBLIC: "public" >
+| < RECORD: "record" >
 | < RETURN: "return" >
 | < SHORT: "short" >
 | < STATIC: "static" >
@@ -972,9 +973,7 @@ TOKEN :
 void CompilationUnit():
 {}
 {
-  [ LOOKAHEAD( "package" ) PackageDeclaration() ]
-  ( ImportDeclaration() )*
-  ( TypeDeclaration() )*
+  ProtocolDeclaration()
   ( < "\u001a" > )?
   ( <STUFF_TO_IGNORE: ~[]> )?
   <EOF>
@@ -1004,31 +1003,28 @@ void ImportDeclaration():
  */
 void TypeDeclaration():
 {
-   int modifiers=0;
 }
 {
   ";"
 |
   (
-     ClassOrInterfaceDeclaration(modifiers)
-   |
-     EnumDeclaration(modifiers)
+     ProtocolDeclaration()
+   | EnumDeclaration()
+   | RecordDeclaration()
   )
 }
 
 
-void ClassOrInterfaceDeclaration(int modifiers):
+void ProtocolDeclaration():
+{}
 {
-   boolean isInterface = false;
-}
-{
-  ( "class" | "interface" { isInterface = true; } )
-  <IDENTIFIER>
-  ClassOrInterfaceBody(isInterface)
+ "protocol"
+ <IDENTIFIER>
+ ProtocolBody()
 }
 
 
-void EnumDeclaration(int modifiers):
+void EnumDeclaration():
 {}
 {
   "enum" <IDENTIFIER>
@@ -1040,8 +1036,6 @@ void EnumBody():
 {
    "{"
    [ EnumConstant() ( LOOKAHEAD(2) "," EnumConstant() )* ]
-    [ "," ]
-   [ ";" ( ClassOrInterfaceBodyDeclaration(false) )* ]
    "}"
 }
 
@@ -1051,38 +1045,76 @@ void EnumConstant():
   <IDENTIFIER>
 }
 
-void ClassOrInterfaceBody(boolean isInterface):
+void ProtocolBody():
 {}
 {
-  "{" ( ClassOrInterfaceBodyDeclaration(isInterface) )* "}"
+  "{"
+  ( ProtocolBodyDeclaration() )*
+  "}"
 }
 
-void ClassOrInterfaceBodyDeclaration(boolean isInterface):
+
+void ProtocolBodyDeclaration():
+{}
 {
-   boolean isNestedInterface = false;
-   int modifiers=0;
-}
-{
-  LOOKAHEAD(2)
-              // more checks, pass the modifiers down to the member
   (
-      ClassOrInterfaceDeclaration(modifiers)
-    |
-      EnumDeclaration(modifiers)
-    |
-      LOOKAHEAD( Type() <IDENTIFIER> ( "[" "]" )* ( "," | "=" | ";" ) )
-      FieldDeclaration(modifiers)
-    |
-      MethodDeclaration(modifiers)
+    EnumDeclaration()
+  | FixedDeclaration()
+  | RecordDeclaration()
   )
-|
+}
+
+
+void FixedDeclaration():
+{}
+{
+  "fixed" <IDENTIFIER> "(" <INTEGER_LITERAL> ")"
   ";"
 }
 
-void FieldDeclaration(int modifiers):
+void RecordDeclaration():
+{}
+{
+  RecordType() <IDENTIFIER>
+  "{"
+    ( FieldDeclaration() )*
+  "}"
+}
+
+void RecordType():
+{}
+{
+  "record" | "error"
+}
+
+
+void Annotation():
+{}
+{
+   LOOKAHEAD( "@" Name() "(" )
+   SingleMemberAnnotation()
+ |
+   MarkerAnnotation()
+}
+
+void MarkerAnnotation():
+{}
+{
+  "@" Name()
+}
+
+void SingleMemberAnnotation():
+{}
+{
+  "@" Name() "(" Literal() ")"
+}
+
+
+void FieldDeclaration():
 {}
 {
   // Modifiers are already matched in the caller
+  ( Annotation() )*
   Type() VariableDeclarator() ( "," VariableDeclarator() )* ";"
 }
 
