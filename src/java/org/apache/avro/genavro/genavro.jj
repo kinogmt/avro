@@ -38,6 +38,15 @@ PARSER_BEGIN(GenAvro)
 package org.apache.avro.genavro;
 
 import java.io.*;
+import java.util.List;
+import java.util.ArrayList;
+import java.util.LinkedHashMap;
+
+import org.apache.avro.Schema;
+import org.apache.avro.Schema.*;
+import org.apache.avro.Protocol;
+import org.apache.avro.Protocol.*;
+
 
 /**
  * Grammar to parse Java version 1.5
@@ -45,6 +54,7 @@ import java.io.*;
  */
 public class GenAvro
 {
+   Names names = new Names();
 
    public GenAvro(String fileName)
    {
@@ -74,8 +84,8 @@ public class GenAvro
       return;
     }
     try {
-      parser.CompilationUnit();
-      System.out.println("Java Parser Version 1.1:  Java program parsed successfully.");
+      Protocol p = parser.CompilationUnit();
+      System.out.println("Parsed:\n" + p.toString(true));
     } catch (ParseException e) {
       System.out.println(e.getMessage());
       System.out.println("Java Parser Version 1.1:  Encountered errors during parse.");
@@ -162,6 +172,8 @@ TOKEN :
 | < INT: "int" >
 | < INTERFACE: "interface" >
 | < LONG: "long" >
+| < BYTES: "bytes" >
+| < STRING: "string" >
 | < NATIVE: "native" >
 | < NEW: "new" >
 | < NULL: "null" >
@@ -970,13 +982,16 @@ TOKEN :
  * Program structuring syntax follows.
  */
 
-void CompilationUnit():
-{}
+Protocol CompilationUnit():
 {
-  ProtocolDeclaration()
+  Protocol p;
+}
+{
+  p = ProtocolDeclaration()
   ( < "\u001a" > )?
   ( <STUFF_TO_IGNORE: ~[]> )?
   <EOF>
+  { return p; }
 }
 
 void PackageDeclaration():
@@ -1001,77 +1016,135 @@ void ImportDeclaration():
 /*
  * Declaration syntax follows.
  */
-void TypeDeclaration():
+Schema SchemaDeclaration():
 {
+  Schema s;
 }
 {
-   FixedDeclaration()
-   | EnumDeclaration()
-   | RecordDeclaration()
+ (
+     s = FixedDeclaration()
+   | s = EnumDeclaration()
+   | s = RecordDeclaration()
+ )
+ {
+   names.add(s);
+   return s;
+ }
+ 
 }
 
 
-void ProtocolDeclaration():
-{}
+Protocol ProtocolDeclaration():
+{
+  Token name;
+  Protocol p;
+}
 {
  "protocol"
- <IDENTIFIER>
- ProtocolBody()
+ name = <IDENTIFIER>
+ {
+   p = new Protocol(name.image, "TODO");
+ }
+ ProtocolBody(p)
+ {
+   return p;
+ }
 }
 
 
-void EnumDeclaration():
-{}
+Schema EnumDeclaration():
 {
-  "enum" <IDENTIFIER>
-  EnumBody()
+  Token nameTok;
+  List<String> symbols;
 }
-
-void EnumBody():
-{}
 {
-   "{"
-   [ EnumConstant() ( LOOKAHEAD(2) "," EnumConstant() )* ]
-   "}"
+  "enum"
+  nameTok = <IDENTIFIER>
+  symbols = EnumBody()
+  {
+    return Schema.createEnum(nameTok.image, null, symbols);
+  }
 }
 
-void EnumConstant():
-{}
+List<String> EnumBody():
 {
-  <IDENTIFIER>
+  List<String> symbols = new ArrayList<String>();
 }
-
-void ProtocolBody():
-{}
 {
   "{"
-  ( ProtocolBodyDeclaration() )*
+  [ EnumConstant(symbols) ( LOOKAHEAD(2) "," EnumConstant(symbols) )* ]
   "}"
+  {
+    return symbols;
+  }
+}
+
+void EnumConstant(List<String> symbols):
+{
+  Token t;
+}
+{
+  t = <IDENTIFIER> { symbols.add(t.image); }
+}
+
+void ProtocolBody(Protocol p):
+{
+  Schema schema;
+  Message message;
+  List<Schema> schemata = new ArrayList<Schema>();
+}
+{
+  "{"
+  (
+      schema = SchemaDeclaration()
+      {
+        schemata.add(schema);
+      }
+
+    | message = MessageDeclaration(p)
+      {
+        // TODO this is kind of sketch!!
+        p.getMessages().put(message.getName(), message);
+      }
+  ) *
+  "}"
+
+  {
+    p.setTypes(schemata);
+  }
 }
 
 
-void ProtocolBodyDeclaration():
-{}
+Schema FixedDeclaration():
 {
-    TypeDeclaration()
-  | MethodDeclaration()
+  Token nameTok, sizeTok;
 }
-
-
-void FixedDeclaration():
-{}
 {
-  "fixed" <IDENTIFIER> "(" <INTEGER_LITERAL> ")"
+  "fixed" nameTok = <IDENTIFIER> "(" sizeTok = <INTEGER_LITERAL> ")"
   ";"
+  {
+    return Schema.createFixed(nameTok.image, null, Integer.parseInt(sizeTok.image));
+  }
 }
 
-void RecordDeclaration():
-{}
+Schema RecordDeclaration():
 {
-  RecordType() <IDENTIFIER>
+  Token nameTok;
+  LinkedHashMap<String, Field> fields = new LinkedHashMap<String, Field>();
+}
+{
+  RecordType()   // error/record
+  nameTok = <IDENTIFIER>
   "{"
-    ( FieldDeclaration() )*
+    (
+      FieldDeclaration(fields)
+    )*
   "}"
+  {
+    Schema result = Schema.createRecord(nameTok.image, null, false);
+    result.setFields(fields);
+    return result;
+  }
 }
 
 void RecordType():
@@ -1103,24 +1176,28 @@ void SingleMemberAnnotation():
 }
 
 
-void FieldDeclaration():
-{}
+void FieldDeclaration(LinkedHashMap<String, Field> fields):
+{
+  Schema type;
+}
 {
   // Modifiers are already matched in the caller
   ( Annotation() )*
-  Type() VariableDeclarator() ( "," VariableDeclarator() )* ";"
+  type = Type()
+  VariableDeclarator(type, fields) ( "," VariableDeclarator(type, fields) )*
+  ";"
 }
 
-void VariableDeclarator():
-{}
+void VariableDeclarator(Schema type, LinkedHashMap<String, Field> fields):
 {
-  VariableDeclaratorId() [ "=" VariableInitializer() ]
+  Token nameTok;
 }
-
-void VariableDeclaratorId():
-{}
 {
-  <IDENTIFIER> ( "[" "]" )*
+  nameTok = <IDENTIFIER>
+  [ "=" VariableInitializer() ] // TODO
+  {
+    fields.put(nameTok.image, new Field(type, null));
+  }
 }
 
 void VariableInitializer():
@@ -1137,25 +1214,35 @@ void ArrayInitializer():
   "{" [ VariableInitializer() ( LOOKAHEAD(2) "," VariableInitializer() )* ] [ "," ] "}"
 }
 
-void MethodDeclaration():
-{}
+Message MessageDeclaration(Protocol p):
+{
+  Token nameToken;
+  String name;
+  Schema request;
+  Schema response;
+  Schema errors = Schema.createUnion(new ArrayList<Schema>());
+}
 {
   // Modifiers already matched in the caller!
-  ResultType()
-  MethodDeclarator() [ "throws" NameList() ]
+  response = ResultType()
+  nameToken = <IDENTIFIER> { name = nameToken.image; }
+  request = FormalParameters()
+  [ "throws" NameList() ] // TODO
   ";"
+  {
+    return p.createMessage(name, request, response, errors);
+  }
 }
 
-void MethodDeclarator():
+Schema FormalParameters():
 {}
 {
-  <IDENTIFIER> FormalParameters()
-}
-
-void FormalParameters():
-{}
-{
-  "(" [ FormalParameter() ( "," FormalParameter() )* ] ")"
+  (
+    "(" [ FormalParameter() ( "," FormalParameter() )* ] ")"
+  )
+  {
+    return Schema.createRecord(new LinkedHashMap<String, Field>());
+  }
 }
 
 void FormalParameter():
@@ -1164,7 +1251,7 @@ void FormalParameter():
   // danson, added
   //          [ "final" | Annotation() ]
   // See Java Language Specification, 3rd Edition, section 8.4.1
-  Type() [ "..." ] VariableDeclaratorId()
+  Type() [ "..." ] <IDENTIFIER>
 }
 
 
@@ -1173,55 +1260,60 @@ void FormalParameter():
  * Type, name and expression syntax follows.
  */
 
-void Type():
-{}
+Schema Type():
 {
-   LOOKAHEAD(2) ReferenceType()
- |
-   PrimitiveType()
+  Schema s;
+}
+{
+  (
+      LOOKAHEAD(2) s = ReferenceType()
+    | s = PrimitiveType()
+  )
+  {
+    System.err.println("Type: " + String.valueOf(s));
+    return s;
+  }
 }
 
-void ReferenceType():
-{}
+Schema ReferenceType():
 {
-   PrimitiveType() ( LOOKAHEAD(2) "[" "]" )+
-  |
-   ( ClassOrInterfaceType() ) ( LOOKAHEAD(2) "[" "]" )*
+  Token id;
+}
+{
+  id = <IDENTIFIER>
+  {
+    System.err.println("Lookup for: " + id.image);
+    Schema type = names.get(id.image);
+    if (type == null) {
+      throw new ParseException("Undefined name: " + id.image);
+    }
+    return type;
+  }
 }
 
-void ClassOrInterfaceType():
+Schema PrimitiveType():
 {}
 {
-  <IDENTIFIER>
+  "boolean" { return Schema.create(Type.BOOLEAN); }
+| "bytes" { return Schema.create(Type.BYTES); }
+| "int" { return Schema.create(Type.INT); }
+| "string" { return Schema.create(Type.BYTES); }
+| "float" { return Schema.create(Type.FLOAT); }
+| "double" { return Schema.create(Type.DOUBLE); }
+| "long" { return Schema.create(Type.LONG); }
+| "null" { return Schema.create(Type.NULL); }
 }
 
-
-void PrimitiveType():
+Schema ResultType():
 {}
 {
-  "boolean"
-|
-  "char"
-|
-  "byte"
-|
-  "short"
-|
-  "int"
-|
-  "long"
-|
-  "float"
-|
-  "double"
-}
-
-void ResultType():
-{}
-{
-  "void"
-|
-  Type()
+  (
+    "void" |
+    Type()
+  )
+  {
+    return Schema.create(Type.NULL);
+  }
 }
 
 void Name():
