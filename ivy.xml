@@ -52,6 +52,7 @@
         conf="eclipse->default">
         <artifact name="ant-eclipse" type="bz2" />
     </dependency>
+    <dependency org="net.java.dev.javacc" name="javacc" rev="5.0" />
   </dependencies>
 
 </ivy-module>

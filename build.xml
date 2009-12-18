@@ -144,7 +144,16 @@
 
   <target name="compile" depends="compile-java,compile-c,compile-cpp"/>
 
-  <target name="compile-java" depends="schemata,ivy-retrieve">
+  <target name="javacc" depends="ivy-retrieve">
+    <mkdir dir="${build.dir}/src/org/apache/avro/genavro"/>
+    <symlink link="${ivy.lib}/javacc.jar" resource="${ivy.lib}/javacc-5.0.jar"
+             overwrite="true" />
+    <javacc target="${src.dir}/java/org/apache/avro/genavro/genavro.jj"
+            outputdirectory="${build.dir}/src/org/apache/avro/genavro"
+            javacchome="${ivy.lib}"/>
+  </target>
+
+  <target name="compile-java" depends="javacc,schemata,ivy-retrieve">
     <java-compiler excludes="**/ipc/** **/*Requestor.java **/*Responder.java"/>
     <java-avro-compiler/>
     <java-compiler/>
