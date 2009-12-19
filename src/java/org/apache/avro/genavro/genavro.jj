@@ -1294,7 +1294,7 @@ Schema PrimitiveType():
   "boolean" { return Schema.create(Type.BOOLEAN); }
 | "bytes" { return Schema.create(Type.BYTES); }
 | "int" { return Schema.create(Type.INT); }
-| "string" { return Schema.create(Type.BYTES); }
+| "string" { return Schema.create(Type.STRING); }
 | "float" { return Schema.create(Type.FLOAT); }
 | "double" { return Schema.create(Type.DOUBLE); }
 | "long" { return Schema.create(Type.LONG); }
