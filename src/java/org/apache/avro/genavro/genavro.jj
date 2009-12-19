@@ -1204,7 +1204,9 @@ void FieldDeclaration(LinkedHashMap<String, Field> fields):
   Map<String, String> props = new HashMap<String, String>();
 }
 {
-  // Modifiers are already matched in the caller
+  // TODO should we be able to specify properties on any Type?
+  // or just on field declarations as done here
+
   ( SchemaProperty(props) )*
   type = Type()
   VariableDeclarator(type, fields) ( "," VariableDeclarator(type, fields) )*
