@@ -59,15 +59,18 @@ PARSER_BEGIN(GenAvro)
 package org.apache.avro.genavro;
 
 import java.io.*;
-import java.util.List;
 import java.util.ArrayList;
+import java.util.HashMap;
 import java.util.LinkedHashMap;
+import java.util.List;
+import java.util.Map;
 
 import org.apache.avro.Schema;
 import org.apache.avro.Schema.*;
 import org.apache.avro.Protocol;
 import org.apache.avro.Protocol.*;
 
+import org.apache.commons.lang.StringEscapeUtils;
 
 /**
  * Grammar to parse a higher-level language into an Avro schema.
@@ -1014,25 +1017,6 @@ Protocol CompilationUnit():
   { return p; }
 }
 
-void PackageDeclaration():
-{}
-{
-   "package" Name() ";"
-}
-
-void ImportDeclaration():
-{}
-{
-  "import" [ "static" ] Name() [ "." "*" ] ";"
-}
-
-/*
- * Modifiers. We match all modifiers in a single rule to reduce the chances of
- * syntax errors for simple modifier mistakes. It will also enable us to give
- * better error messages.
- */
-
-
 /*
  * Declaration syntax follows.
  */
@@ -1174,38 +1158,45 @@ void RecordType():
 }
 
 
-void Annotation():
+void Annotation(Map<String, String> properties):
 {}
 {
-   LOOKAHEAD( "@" Name() "(" )
-   SingleMemberAnnotation()
- |
-   MarkerAnnotation()
+   SingleMemberAnnotation(properties)
 }
 
-void MarkerAnnotation():
-{}
-{
-  "@" Name()
-}
 
-void SingleMemberAnnotation():
-{}
+void SingleMemberAnnotation(Map<String, String> properties):
 {
-  "@" Name() "(" Literal() ")"
+  Token key;
+  String val;
+}
+{
+  "@" key = <IDENTIFIER> "(" val = Literal() ")"
+  {
+    if (properties.containsKey(key.image)) {
+      throw new ParseException("Key " + key.image + " already specified.");
+    }
+    properties.put(key.image, val);
+  }
 }
 
 
 void FieldDeclaration(LinkedHashMap<String, Field> fields):
 {
   Schema type;
+  Map<String, String> props = new HashMap<String, String>();
 }
 {
   // Modifiers are already matched in the caller
-  ( Annotation() )*
+  ( Annotation(props) )*
   type = Type()
   VariableDeclarator(type, fields) ( "," VariableDeclarator(type, fields) )*
   ";"
+  {
+    for (Map.Entry<String, String> propEntry : props.entrySet()) {
+      type.setProp(propEntry.getKey(), propEntry.getValue());
+    }
+  }
 }
 
 void VariableDeclarator(Schema type, LinkedHashMap<String, Field> fields):
@@ -1329,44 +1320,42 @@ Schema ResultType():
   | schema = Type() { return schema; }
 }
 
-void Name():
-/*
- * A lookahead of 2 is required below since "Name" can be followed
- * by a ".*" when used in the context of an "ImportDeclaration".
- */
-{}
+
+String Literal():
+{ Token t; }
 {
-  <IDENTIFIER>
-  ( LOOKAHEAD(2) "." <IDENTIFIER>
-  )*
+  (
+    t = <INTEGER_LITERAL>
+  | t = <FLOATING_POINT_LITERAL>
+  | t = <CHARACTER_LITERAL>
+  | t = BooleanLiteral()
+  | t = NullLiteral()
+  )
+  {
+    return t.image;
+  }
+| t = <STRING_LITERAL>
+  {
+    String betweenQuotes = t.image.substring(1, t.image.length() - 1);
+    return StringEscapeUtils.unescapeJavaScript(betweenQuotes);
+  }
 }
 
-void Literal():
-{}
+Token BooleanLiteral():
+{ Token t; }
 {
-  <INTEGER_LITERAL>
-|
-  <FLOATING_POINT_LITERAL>
-|
-  <CHARACTER_LITERAL>
-|
-  <STRING_LITERAL>
-|
-  BooleanLiteral()
-|
-  NullLiteral()
+  (   t = "true"
+    | t = "false"
+  )
+  {
+    return t;
+  }
 }
 
-void BooleanLiteral():
-{}
+Token NullLiteral():
 {
-  "true"
-|
-  "false"
+  Token t;
 }
-
-void NullLiteral():
-{}
 {
-  "null"
+  t = "null" { return t; }
 }
