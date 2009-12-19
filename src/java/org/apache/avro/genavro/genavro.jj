@@ -219,6 +219,7 @@ TOKEN :
 | < TRANSIENT: "transient" >
 | < TRUE: "true" >
 | < TRY: "try" >
+| < UNION: "union" >
 | < VOID: "void" >
 | < VOLATILE: "volatile" >
 | < WHILE: "while" >
@@ -1034,7 +1035,30 @@ Schema SchemaDeclaration():
    names.add(s);
    return s;
  }
- 
+}
+
+Schema UnionDefinition():
+{
+  Schema s;
+  List<Schema> schemata = new ArrayList<Schema>();
+}
+{
+ // TODO should probably disallow other unions here in the parser?
+
+  "union"
+  "{"
+  s = Type()
+  { schemata.add(s); }
+
+  (
+    ","
+    s = Type()
+    { schemata.add(s); }
+  )*
+  "}"
+  {
+    return Schema.createUnion(schemata);
+  }
 }
 
 
@@ -1270,6 +1294,7 @@ Schema Type():
   (
       LOOKAHEAD(2) s = ReferenceType()
     | s = PrimitiveType()
+    | s = UnionDefinition()
   )
   {
     return s;
