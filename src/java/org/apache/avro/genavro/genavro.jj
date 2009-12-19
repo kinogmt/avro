@@ -1158,14 +1158,7 @@ void RecordType():
 }
 
 
-void Annotation(Map<String, String> properties):
-{}
-{
-   SingleMemberAnnotation(properties)
-}
-
-
-void SingleMemberAnnotation(Map<String, String> properties):
+void SchemaProperty(Map<String, String> properties):
 {
   Token key;
   String val;
@@ -1188,7 +1181,7 @@ void FieldDeclaration(LinkedHashMap<String, Field> fields):
 }
 {
   // Modifiers are already matched in the caller
-  ( Annotation(props) )*
+  ( SchemaProperty(props) )*
   type = Type()
   VariableDeclarator(type, fields) ( "," VariableDeclarator(type, fields) )*
   ";"
