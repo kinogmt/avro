@@ -1194,64 +1194,63 @@ void VariableDeclarator(Schema type, LinkedHashMap<String, Field> fields):
 }
 {
   nameTok = <IDENTIFIER>
-  [ "=" VariableInitializer() ] // TODO
   {
     fields.put(nameTok.image, new Field(type, null));
   }
 }
 
-void VariableInitializer():
-{}
-{
-  ArrayInitializer()
-|
-  Literal()
-}
-
-void ArrayInitializer():
-{}
-{
-  "{" [ VariableInitializer() ( LOOKAHEAD(2) "," VariableInitializer() )* ] [ "," ] "}"
-}
 
 Message MessageDeclaration(Protocol p):
 {
   Token nameToken;
-  String name;
   Schema request;
   Schema response;
-  Schema errors = Schema.createUnion(new ArrayList<Schema>());
+  List<Schema> errorSchemata = new ArrayList<Schema>();
+  errorSchemata.add(Protocol.SYSTEM_ERROR);
 }
 {
   // Modifiers already matched in the caller!
   response = ResultType()
-  nameToken = <IDENTIFIER> { name = nameToken.image; }
+  nameToken = <IDENTIFIER>
   request = FormalParameters()
-  [ "throws" NameList() ] // TODO
+  [ "throws" ErrorList(errorSchemata) ]
   ";"
   {
-    return p.createMessage(name, request, response, errors);
+    Schema errors = Schema.createUnion(errorSchemata);
+    System.err.println(nameToken.image + " throws " + errorSchemata.size() + "errs");
+    return p.createMessage(nameToken.image, request, response, errors);
   }
+}
+
+void ErrorList(List<Schema> errors):
+{
+  Schema s;
+}
+{
+  s = ReferenceType() { errors.add(s); }
+  ( "," s = ReferenceType() { errors.add(s); } )*
 }
 
 Schema FormalParameters():
-{}
+{
+  LinkedHashMap<String, Field> fields = new LinkedHashMap<String, Field>();
+}
 {
   (
-    "(" [ FormalParameter() ( "," FormalParameter() )* ] ")"
+    "(" [ FormalParameter(fields) ( "," FormalParameter(fields) )* ] ")"
   )
   {
-    return Schema.createRecord(new LinkedHashMap<String, Field>());
+    return Schema.createRecord(fields);
   }
 }
 
-void FormalParameter():
-{}
+void FormalParameter(LinkedHashMap<String, Field> fields):
 {
-  // danson, added
-  //          [ "final" | Annotation() ]
-  // See Java Language Specification, 3rd Edition, section 8.4.1
-  Type() [ "..." ] <IDENTIFIER>
+  Schema type;
+}
+{
+  type = Type()
+  VariableDeclarator(type, fields)
 }
 
 
@@ -1270,7 +1269,6 @@ Schema Type():
     | s = PrimitiveType()
   )
   {
-    System.err.println("Type: " + String.valueOf(s));
     return s;
   }
 }
@@ -1282,7 +1280,6 @@ Schema ReferenceType():
 {
   id = <IDENTIFIER>
   {
-    System.err.println("Lookup for: " + id.image);
     Schema type = names.get(id.image);
     if (type == null) {
       throw new ParseException("Undefined name: " + id.image);
@@ -1305,15 +1302,12 @@ Schema PrimitiveType():
 }
 
 Schema ResultType():
-{}
 {
-  (
-    "void" |
-    Type()
-  )
-  {
-    return Schema.create(Type.NULL);
-  }
+  Schema schema;
+}
+{
+    "void"          { return Schema.create(Type.NULL); }
+  | schema = Type() { return schema; }
 }
 
 void Name():
@@ -1326,12 +1320,6 @@ void Name():
   <IDENTIFIER>
   ( LOOKAHEAD(2) "." <IDENTIFIER>
   )*
-}
-
-void NameList():
-{}
-{
-  Name() ( "," Name() )*
 }
 
 void Literal():
